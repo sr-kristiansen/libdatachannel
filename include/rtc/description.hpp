@@ -62,6 +62,7 @@ public:
 	std::vector<string> iceOptions() const;
 	optional<string> iceUfrag() const;
 	optional<string> icePwd() const;
+	optional<string> icePacing() const;
 	optional<CertificateFingerprint> fingerprint() const;
 	bool ended() const;
 
@@ -307,7 +308,7 @@ private:
 	string mUsername;
 	string mSessionId;
 	std::vector<string> mIceOptions;
-	optional<string> mIceUfrag, mIcePwd;
+	optional<string> mIceUfrag, mIcePwd, mIcePacing;
 	optional<CertificateFingerprint> mFingerprint;
 	std::vector<string> mAttributes; // other attributes
 
