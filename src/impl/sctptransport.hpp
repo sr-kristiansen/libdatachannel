@@ -21,7 +21,7 @@
 #include <map>
 #include <mutex>
 
-#include "usrsctp.h"
+#include <usrsctp/usrsctp.h>
 
 namespace rtc::impl {
 
