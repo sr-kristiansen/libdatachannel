@@ -155,16 +155,39 @@ void IceTransport::addIceServer(IceServer server) {
 		return;
 	}
 
-	if (server.relayType != IceServer::RelayType::TurnUdp) {
-		PLOG_WARNING << "TURN transports TCP and TLS are not supported with libjuice";
-		return;
-	}
-
 	if (mTurnServersAdded >= MAX_TURN_SERVERS_COUNT)
 		return;
 
-	if (server.port == 0)
-		server.port = 3478; // TURN UDP port
+	juice_turn_transport_t transport;
+	switch (server.relayType) {
+	case IceServer::RelayType::TurnUdp:
+		transport = JUICE_TURN_TRANSPORT_UDP;
+		break;
+	case IceServer::RelayType::TurnTcp:
+		transport = JUICE_TURN_TRANSPORT_TCP;
+		break;
+	case IceServer::RelayType::TurnTls:
+	case IceServer::RelayType::TurnTlsReal:
+	case IceServer::RelayType::TurnDtls:
+		transport = JUICE_TURN_TRANSPORT_TLS;
+		break;
+	default:
+		transport = JUICE_TURN_TRANSPORT_UDP;
+		break;
+	}
+
+	if (server.port == 0) {
+		switch (server.relayType) {
+		case IceServer::RelayType::TurnTls:
+		case IceServer::RelayType::TurnTlsReal:
+		case IceServer::RelayType::TurnDtls:
+			server.port = 5349;
+			break;
+		default:
+			server.port = 3478;
+			break;
+		}
+	}
 
 	PLOG_INFO << "Using TURN server \"" << server.hostname << ":" << server.port << "\"";
 	juice_turn_server_t turn_server = {};
@@ -172,6 +195,7 @@ void IceTransport::addIceServer(IceServer server) {
 	turn_server.username = server.username.c_str();
 	turn_server.password = server.password.c_str();
 	turn_server.port = server.port;
+	turn_server.transport = transport;
 
 	if (juice_add_turn_server(mAgent.get(), &turn_server) != 0)
 		throw std::runtime_error("Failed to add TURN server");
@@ -606,14 +630,16 @@ void IceTransport::addIceServer(IceServer server) {
 	}
 
 	if (server.port == 0)
-		server.port = server.relayType == IceServer::RelayType::TurnTls ? 5349 : 3478;
+		server.port = (server.relayType == IceServer::RelayType::TurnTls ||
+		               server.relayType == IceServer::RelayType::TurnTlsReal ||
+		               server.relayType == IceServer::RelayType::TurnDtls) ? 5349 : 3478;
 
+	bool isUdpTransport = (server.relayType == IceServer::RelayType::TurnUdp ||
+	                        server.relayType == IceServer::RelayType::TurnDtls);
 	struct addrinfo hints = {};
 	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype =
-	    server.relayType == IceServer::RelayType::TurnUdp ? SOCK_DGRAM : SOCK_STREAM;
-	hints.ai_protocol =
-	    server.relayType == IceServer::RelayType::TurnUdp ? IPPROTO_UDP : IPPROTO_TCP;
+	hints.ai_socktype = isUdpTransport ? SOCK_DGRAM : SOCK_STREAM;
+	hints.ai_protocol = isUdpTransport ? IPPROTO_UDP : IPPROTO_TCP;
 	hints.ai_flags = AI_ADDRCONFIG;
 	struct addrinfo *result = nullptr;
 	if (getaddrinfo(server.hostname.c_str(), std::to_string(server.port).c_str(), &hints,
@@ -639,6 +665,12 @@ void IceTransport::addIceServer(IceServer server) {
 				case IceServer::RelayType::TurnTls:
 					niceRelayType = NICE_RELAY_TYPE_TURN_TLS;
 					break;
+				case IceServer::RelayType::TurnTlsReal:
+					niceRelayType = NICE_RELAY_TYPE_TURN_TLS_REAL;
+					break;
+				case IceServer::RelayType::TurnDtls:
+					niceRelayType = NICE_RELAY_TYPE_TURN_DTLS;
+					break;
 				default:
 					niceRelayType = NICE_RELAY_TYPE_TURN_UDP;
 					break;
@@ -646,6 +678,15 @@ void IceTransport::addIceServer(IceServer server) {
 				nice_agent_set_relay_info(mNiceAgent.get(), mStreamId, 1, nodebuffer,
 				                          std::stoul(servbuffer), server.username.c_str(),
 				                          server.password.c_str(), niceRelayType);
+				if (niceRelayType == NICE_RELAY_TYPE_TURN_TLS_REAL ||
+				    niceRelayType == NICE_RELAY_TYPE_TURN_DTLS) {
+					const char *sniName = server.tlsServerName
+					    ? server.tlsServerName->c_str() : server.hostname.c_str();
+					nice_agent_set_relay_tls_certificate(
+					    mNiceAgent.get(), mStreamId, 1,
+					    nodebuffer, std::stoul(servbuffer),
+					    sniName, nullptr);
+				}
 			}
 		}
 	}

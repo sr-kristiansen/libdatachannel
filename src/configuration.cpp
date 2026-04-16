@@ -53,17 +53,18 @@ IceServer::IceServer(const string &url) {
 		type = Type::Turn;
 	else if (scheme == "turns" || scheme == "TURNS") {
 		type = Type::Turn;
-		relayType = RelayType::TurnTls;
+		relayType = RelayType::TurnTlsReal;
 	} else
 		throw std::invalid_argument("Unknown ICE server protocol: " + scheme);
 
+	bool isTurns = (relayType == RelayType::TurnTlsReal || relayType == RelayType::TurnDtls);
 	if (auto &query = opt[15]) {
 		if (query->find("transport=udp") != string::npos)
-			relayType = RelayType::TurnUdp;
+			relayType = isTurns ? RelayType::TurnDtls : RelayType::TurnUdp;
 		if (query->find("transport=tcp") != string::npos)
-			relayType = RelayType::TurnTcp;
+			relayType = isTurns ? RelayType::TurnTlsReal : RelayType::TurnTcp;
 		if (query->find("transport=tls") != string::npos)
-			relayType = RelayType::TurnTls;
+			relayType = RelayType::TurnTlsReal;
 	}
 
 	username = utils::url_decode(opt[6].value_or(""));
@@ -78,7 +79,10 @@ IceServer::IceServer(const string &url) {
 		hostname = utils::url_decode(hostname);
 	}
 
-	string service = opt[12].value_or(relayType == RelayType::TurnTls ? "5349" : "3478");
+	string service = opt[12].value_or(
+	    (relayType == RelayType::TurnTls || relayType == RelayType::TurnTlsReal ||
+	     relayType == RelayType::TurnDtls)
+	        ? "5349" : "3478");
 	try {
 		port = uint16_t(std::stoul(service));
 	} catch (...) {

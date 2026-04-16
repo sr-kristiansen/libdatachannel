@@ -17,7 +17,7 @@ namespace rtc {
 
 struct RTC_CPP_EXPORT IceServer {
 	enum class Type { Stun, Turn };
-	enum class RelayType { TurnUdp, TurnTcp, TurnTls };
+	enum class RelayType { TurnUdp, TurnTcp, TurnTls, TurnTlsReal, TurnDtls };
 
 	// Any type
 	IceServer(const string &url);
@@ -38,6 +38,8 @@ struct RTC_CPP_EXPORT IceServer {
 	string username;
 	string password;
 	RelayType relayType;
+	optional<string> tlsServerName;      // SNI hostname for TURNS (null = use hostname)
+	optional<string> tlsCertFingerprint;  // SHA-256 hex fingerprint for cert pinning (null = system CA)
 };
 
 struct RTC_CPP_EXPORT ProxyServer {
